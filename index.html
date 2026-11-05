@@ -118,11 +118,17 @@
     try {
       setStatus('Recherche du Micro:bit…');
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [UART_SERVICE] }]
+        acceptAllDevices: true,
+        optionalServices: [UART_SERVICE]
       });
       device.addEventListener('gattserverdisconnected', onDisconnected);
       const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(UART_SERVICE);
+      let service;
+      try {
+        service = await server.getPrimaryService(UART_SERVICE);
+      } catch (error) {
+        throw new Error('La carte est visible, mais le service UART est absent. Vérifie que le programme MakeCode avec bluetooth.startUartService() a bien été téléchargé.');
+      }
       rxCharacteristic = await service.getCharacteristic(UART_RX);
       try {
         txCharacteristic = await service.getCharacteristic(UART_TX);
