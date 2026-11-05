@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>Commande servomoteur Micro:bit</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; background: #111827; color: #f9fafb; min-height: 100vh; display: grid; place-items: center; }
+    main { width: min(92vw, 440px); box-sizing: border-box; padding: 24px; }
+    h1 { font-size: 1.55rem; margin: 0 0 8px; }
+    p { color: #cbd5e1; line-height: 1.45; }
+    .panel { background: #1f2937; border: 1px solid #374151; border-radius: 18px; padding: 20px; margin-top: 16px; }
+    button { border: 0; border-radius: 12px; padding: 14px 18px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .connect { width: 100%; background: #38bdf8; color: #082f49; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .move { background: #e5e7eb; color: #111827; font-size: 1.25rem; }
+    .angle { font-size: 3rem; font-weight: 800; text-align: center; margin: 12px 0 2px; }
+    .muted { text-align: center; font-size: .9rem; color: #cbd5e1; }
+    input[type=range] { width: 100%; margin: 22px 0 8px; accent-color: #38bdf8; }
+    .ends { display: flex; justify-content: space-between; color: #cbd5e1; font-size: .85rem; }
+    #status { font-size: .9rem; margin-top: 14px; overflow-wrap: anywhere; }
+    .hint { font-size: .82rem; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Servomoteur Micro:bit</h1>
+  <p>Connecte ton Micro:bit, puis règle l’angle entre 0° et 180°.</p>
+
+  <button id="connect" class="connect">Connecter au Micro:bit</button>
+
+  <section class="panel">
+    <div class="muted">Angle demandé</div>
+    <div class="angle"><span id="angleValue">90</span>°</div>
+    <div class="controls">
+      <button id="left" class="move" disabled>− 5°</button>
+      <button id="right" class="move" disabled>+ 5°</button>
+    </div>
+    <label for="angleSlider">Réglage précis</label>
+    <input id="angleSlider" type="range" min="0" max="180" step="1" value="90" disabled>
+    <div class="ends"><span>0°</span><span>90°</span><span>180°</span></div>
+    <p id="status" role="status">Non connecté.</p>
+  </section>
+
+  <p class="hint">Sur iPhone, ouvre cette page dans un navigateur iOS compatible Web Bluetooth, par exemple Bluefy. Le site doit être servi en HTTPS.</p>
+</main>
+
+<script>
+(() => {
+  // Nordic UART Service, utilisé par bluetooth.startUartService() dans MakeCode.
+  const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const UART_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // écrit vers Micro:bit
+  const UART_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // notifications depuis Micro:bit
+
+  const connectButton = document.querySelector('#connect');
+  const leftButton = document.querySelector('#left');
+  const rightButton = document.querySelector('#right');
+  const slider = document.querySelector('#angleSlider');
+  const angleValue = document.querySelector('#angleValue');
+  const status = document.querySelector('#status');
+
+  let device = null;
+  let txCharacteristic = null;
+  let rxCharacteristic = null;
+  let angle = 90;
+  let sendTimer = null;
+
+  function setStatus(message) { status.textContent = message; }
+  function setConnected(connected) {
+    leftButton.disabled = !connected;
+    rightButton.disabled = !connected;
+    slider.disabled = !connected;
+    connectButton.textContent = connected ? 'Déconnecter' : 'Connecter au Micro:bit';
+  }
+  function showAngle(value) {
+    angle = Math.max(0, Math.min(180, Math.round(Number(value))));
+    angleValue.textContent = angle;
+    slider.value = angle;
+  }
+  async function sendAngle() {
+    if (!rxCharacteristic) return;
+    try {
+      const bytes = new TextEncoder().encode(`ANGLE:${angle}\n`);
+      if (rxCharacteristic.writeValueWithResponse) {
+        await rxCharacteristic.writeValueWithResponse(bytes);
+      } else {
+        await rxCharacteristic.writeValue(bytes);
+      }
+      setStatus(`Connecté — angle envoyé : ${angle}°`);
+    } catch (error) {
+      setStatus('Erreur lors de l’envoi : ' + error.message);
+    }
+  }
+  function scheduleSend() {
+    clearTimeout(sendTimer);
+    sendTimer = setTimeout(sendAngle, 35);
+  }
+  function onDisconnected() {
+    txCharacteristic = null;
+    rxCharacteristic = null;
+    setConnected(false);
+    setStatus('Connexion Bluetooth perdue.');
+  }
+
+  connectButton.addEventListener('click', async () => {
+    if (device?.gatt?.connected) {
+      device.gatt.disconnect();
+      onDisconnected();
+      return;
+    }
+    if (!navigator.bluetooth) {
+      setStatus('Web Bluetooth indisponible. Sur iPhone, essaie un navigateur compatible comme Bluefy.');
+      return;
+    }
+    try {
+      setStatus('Recherche du Micro:bit…');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [UART_SERVICE] }]
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(UART_SERVICE);
+      rxCharacteristic = await service.getCharacteristic(UART_RX);
+      try {
+        txCharacteristic = await service.getCharacteristic(UART_TX);
+        await txCharacteristic.startNotifications();
+      } catch (_) {
+        // La réception n'est pas nécessaire pour envoyer les angles.
+      }
+      setConnected(true);
+      setStatus('Connecté. Envoi de la position initiale…');
+      await sendAngle();
+    } catch (error) {
+      setStatus('Connexion impossible : ' + error.message);
+      setConnected(false);
+    }
+  });
+
+  leftButton.addEventListener('click', () => { showAngle(angle - 5); sendAngle(); });
+  rightButton.addEventListener('click', () => { showAngle(angle + 5); sendAngle(); });
+  slider.addEventListener('input', () => { showAngle(slider.value); scheduleSend(); });
+  slider.addEventListener('change', sendAngle);
+  showAngle(90);
+})();
+</script>
+</body>
+</html>
