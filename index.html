@@ -102,7 +102,7 @@
       if (uartCharacteristic.writeValueWithoutResponse) {
         await uartCharacteristic.writeValueWithoutResponse(data);
       } else {
-        await uartCharacteristic.writeWithResponse(data);
+        await uartCharacteristic.writeValueWithResponse(data);
       }
       setStatus('Connecté — commande envoyée : ' + commande, true);
     } catch (error) {
