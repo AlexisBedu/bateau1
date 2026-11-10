@@ -93,16 +93,20 @@
 
   async function envoyerCommande(commande) {
     if (!uartCharacteristic || !server || !server.connected) {
-      setStatus('Connecte d’abord la micro:bit.');
+      setStatus('Micro:bit non connectée.');
       return;
     }
     try {
       // Le programme MakeCode lit chaque commande jusqu’au caractère NewLine.
       const data = new TextEncoder().encode(commande + '\n');
-      if (uartCharacteristic.writeValueWithoutResponse) {
+      const properties = uartCharacteristic.properties;
+
+      if (properties.writeWithoutResponse) {
         await uartCharacteristic.writeValueWithoutResponse(data);
-      } else {
+      } else if (properties.write) {
         await uartCharacteristic.writeValueWithResponse(data);
+      } else {
+        throw new Error('UART_RX ne permet pas l’écriture.');
       }
       setStatus('Connecté — commande envoyée : ' + commande, true);
     } catch (error) {
@@ -130,7 +134,17 @@
       server = await device.gatt.connect();
       const service = await server.getPrimaryService(UART_SERVICE);
       uartCharacteristic = await service.getCharacteristic(UART_RX);
-      setStatus('Connecté à ' + (device.name || 'la micro:bit'), true);
+
+      console.log('Appareil :', device.name);
+      console.log('UART_RX :', uartCharacteristic.uuid);
+      console.log('Propriétés :', uartCharacteristic.properties);
+
+      setStatus(
+        'Connecté — RX écriture : ' +
+        (uartCharacteristic.properties.write ||
+         uartCharacteristic.properties.writeWithoutResponse),
+        true
+      );
       connectBtn.textContent = 'Connecté';
     } catch (error) {
       console.error(error);
