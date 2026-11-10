@@ -91,25 +91,27 @@
     statusEl.style.color = connected ? '#16804a' : '#bd3030';
   }
 
+
   async function envoyerCommande(commande) {
-    if (!uartCharacteristic || !server || !server.connected) {
-      setStatus('Connecte d’abord la micro:bit.');
-      return;
-    }
-    try {
-      // Le programme MakeCode lit chaque commande jusqu’au caractère NewLine.
-      const data = new TextEncoder().encode(commande + '\n');
-      if (uartCharacteristic.writeValueWithoutResponse) {
-        await uartCharacteristic.writeValueWithoutResponse(data);
-      } else {
-        await uartCharacteristic.writeValue(data);
+      if (!uartCharacteristic || !server || !server.connected) {
+          setStatus("Micro:bit non connectée.");
+          return;
       }
-      setStatus('Connecté — commande envoyée : ' + commande, true);
-    } catch (error) {
-      console.error(error);
-      setStatus('Erreur d’envoi : ' + error.message);
-    }
+  
+      try {
+          const donnees = new TextEncoder().encode(commande + "\n");
+  
+          // Écriture avec réponse pour vérifier l'envoi
+          await uartCharacteristic.writeValue(donnees);
+  
+          setStatus("Envoi réussi : " + commande, true);
+  
+      } catch (erreur) {
+          console.error("Erreur Bluetooth :", erreur);
+          setStatus("Erreur d'envoi : " + erreur.message);
+      }
   }
+
 
   connectBtn.addEventListener('click', async () => {
     if (!navigator.bluetooth) {
