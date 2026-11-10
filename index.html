@@ -36,6 +36,7 @@
   <section class="panel">
     <h2>Connexion Bluetooth</h2>
     <button id="connectBtn" class="connect">Connecter la micro:bit</button>
+    <button onclick="testerBluetooth()">TEST BLUETOOTH</button>
     <div id="status">Non connecté</div>
     <p class="hint">Ouvre cette page dans Bluefy sur ton iPhone. Autorise l’accès Bluetooth lorsque le navigateur le demande.</p>
   </section>
@@ -67,6 +68,9 @@
 </main>
 
 <script>
+  async function testerBluetooth() {
+    alert("Le bouton HTML fonctionne !");
+    await envoyerCommande("ANGLE:95");
 (() => {
   // Nordic UART Service utilisé par MakeCode sur micro:bit
   const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
