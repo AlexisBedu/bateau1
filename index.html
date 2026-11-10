@@ -119,7 +119,8 @@
     try {
       setStatus('Recherche de la micro:bit…');
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [UART_SERVICE] }]
+          acceptAllDevices: true,
+          optionalServices: [UART_SERVICE]
       });
       device.addEventListener('gattserverdisconnected', () => {
         server = null;
