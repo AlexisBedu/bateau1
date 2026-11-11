@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gouvernail</title>
+<style>
+:root { --bg:#f2f6fa; --card:#fff; --text:#17324d; --blue:#1769aa; --green:#16804a; --red:#b3261e; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0f1a26; --card:#1a2a3b; --text:#e6eef7; }
+}
+* { box-sizing: border-box; }
+body { font-family: -apple-system, Arial, sans-serif; background: var(--bg); color: var(--text);
+       margin: 0; padding: 20px; padding-top: max(20px, env(safe-area-inset-top)); text-align: center; }
+main { max-width: 500px; margin: auto; }
+.panel { background: var(--card); padding: 20px; margin-top: 20px; border-radius: 15px; }
+button { padding: 16px; border: none; border-radius: 12px; background: var(--blue); color: #fff;
+         font-size: 18px; font-weight: bold; }
+button:active { opacity: .7; }
+#connectBtn { width: 100%; background: var(--green); }
+#connectBtn.on { background: var(--red); }
+.row { display: flex; gap: 10px; margin-top: 15px; }
+.row button { flex: 1; }
+input[type=range] { width: 100%; margin-top: 20px; height: 40px; }
+.value { font-size: 28px; font-weight: bold; margin: 10px; }
+#status { margin-top: 15px; font-weight: bold; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🚤 Gouvernail</h1>
+
+  <section class="panel">
+    <button id="connectBtn">Connecter la Micro:bit</button>
+    <div id="status">Non connecté</div>
+  </section>
+
+  <section class="panel">
+    <div class="value">Angle : <span id="angleValue">90</span>°</div>
+    <input id="angleSlider" type="range" min="0" max="180" value="90">
+    <div class="row">
+      <button id="leftBtn">−5°</button>
+      <button id="centerBtn">90°</button>
+      <button id="rightBtn">+5°</button>
+    </div>
+  </section>
+</main>
+
+<script>
+// UART Bluetooth de la Micro:bit
+const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const UART_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // écriture vers la Micro:bit
+
+let device = null;
+let uart = null;
+let angle = 90;
+let sending = false;
+let pending = false;
+
+const statusEl = document.getElementById('status');
+const slider = document.getElementById('angleSlider');
+const angleValue = document.getElementById('angleValue');
+const connectBtn = document.getElementById('connectBtn');
+
+function setStatus(t) { statusEl.textContent = t; }
+
+function errText(e) {
+  return [e && e.name, e && e.message].filter(Boolean).join(' : ') || String(e);
+}
+
+function onDisconnected() {
+  uart = null;
+  connectBtn.textContent = 'Connecter la Micro:bit';
+  connectBtn.classList.remove('on');
+  setStatus('Déconnecté');
+}
+
+async function connecter() {
+  if (!navigator.bluetooth) {
+    setStatus('Web Bluetooth indisponible : ouvre cette page dans Bluefy');
+    return;
+  }
+  try {
+    setStatus('Recherche de la Micro:bit...');
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [UART_SERVICE]
+    });
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+
+    setStatus('Connexion...');
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(UART_SERVICE);
+    uart = await service.getCharacteristic(UART_RX);
+
+    connectBtn.textContent = 'Déconnecter';
+    connectBtn.classList.add('on');
+    setStatus('Connecté à ' + (device.name || 'la Micro:bit'));
+    envoyer(); // synchronise la position
+  } catch (e) {
+    console.error(e);
+    uart = null;
+    setStatus('Erreur : ' + errText(e));
+  }
+}
+
+function deconnecter() {
+  if (device && device.gatt && device.gatt.connected) device.gatt.disconnect();
+  else onDisconnected();
+}
+
+connectBtn.onclick = () => (uart ? deconnecter() : connecter());
+
+// Envoi avec limitation : un seul envoi à la fois, on garde le dernier angle
+async function envoyer() {
+  if (!uart) return;
+  if (sending) { pending = true; return; }
+  sending = true;
+  try {
+    const data = new TextEncoder().encode('ANGLE:' + angle + '\n');
+    if (uart.writeValueWithoutResponse) await uart.writeValueWithoutResponse(data);
+    else await uart.writeValue(data);
+    setStatus('Connecté — Angle : ' + angle + '°');
+  } catch (e) {
+    console.error(e);
+    setStatus('Erreur d\'envoi : ' + errText(e));
+  } finally {
+    sending = false;
+    if (pending) { pending = false; setTimeout(envoyer, 40); }
+  }
+}
+
+function reglerAngle(v) {
+  angle = Math.max(0, Math.min(180, Math.round(Number(v))));
+  slider.value = angle;
+  angleValue.textContent = angle;
+  envoyer();
+}
+
+slider.addEventListener('input', () => reglerAngle(slider.value));
+document.getElementById('leftBtn').onclick   = () => reglerAngle(angle - 5);
+document.getElementById('rightBtn').onclick  = () => reglerAngle(angle + 5);
+document.getElementById('centerBtn').onclick = () => reglerAngle(90);
+
+if (!navigator.bluetooth) setStatus('Ouvre cette page dans Bluefy (Safari ne supporte pas Bluetooth)');
+</script>
+</body>
+</html>
