@@ -118,8 +118,14 @@ async function envoyer() {
   sending = true;
   try {
     const data = new TextEncoder().encode('ANGLE:' + angle + '\n');
-    if (uart.writeValueWithResponse) await uart.writeValueWithResponse(data);
-    else await uart.writeValue(data);
+    const p = uart.properties;
+    if (p.writeWithoutResponse && uart.writeValueWithoutResponse) {
+      await uart.writeValueWithoutResponse(data);
+    } else if (p.write && uart.writeValueWithResponse) {
+      await uart.writeValueWithResponse(data);
+    } else {
+      await uart.writeValue(data);
+    }
     setStatus('Connecté — Angle : ' + angle + '°');
   } catch (e) {
     console.error(e);
@@ -129,7 +135,6 @@ async function envoyer() {
     if (pending) { pending = false; setTimeout(envoyer, 40); }
   }
 }
-
 function reglerAngle(v) {
   angle = Math.max(0, Math.min(180, Math.round(Number(v))));
   slider.value = angle;
