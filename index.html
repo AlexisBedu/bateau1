@@ -134,6 +134,15 @@
       server = await device.gatt.connect();
       const service = await server.getPrimaryService(UART_SERVICE);
       uartCharacteristic = await service.getCharacteristic(UART_RX);
+      alert(
+        "UUID : " + uartCharacteristic.uuid + "\n" +
+        "writeValueWithoutResponse : " +
+        typeof uartCharacteristic.writeValueWithoutResponse + "\n" +
+        "writeValueWithResponse : " +
+        typeof uartCharacteristic.writeValueWithResponse + "\n" +
+        "writeValue : " +
+        typeof uartCharacteristic.writeValue
+      );
 
       const p = uartCharacteristic.properties;
 
