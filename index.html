@@ -99,15 +99,7 @@
     try {
       // Le programme MakeCode lit chaque commande jusqu’au caractère NewLine.
       const data = new TextEncoder().encode(commande + '\n');
-      const properties = uartCharacteristic.properties;
-
-      if (properties.writeWithoutResponse) {
-        await uartCharacteristic.writeValueWithoutResponse(data);
-      } else if (properties.write) {
-        await uartCharacteristic.writeValueWithResponse(data);
-      } else {
-        throw new Error('UART_RX ne permet pas l’écriture.');
-      }
+      await uartCharacteristic.writeValueWithoutResponse(data);
       setStatus('Connecté — commande envoyée : ' + commande, true);
     } catch (error) {
       console.error(error);
