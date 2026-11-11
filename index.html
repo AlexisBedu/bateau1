@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -134,6 +134,16 @@
       server = await device.gatt.connect();
       const service = await server.getPrimaryService(UART_SERVICE);
       uartCharacteristic = await service.getCharacteristic(UART_RX);
+
+      const p = uartCharacteristic.properties;
+
+      alert(
+        "UART_RX :\n" +
+        "Read : " + p.read + "\n" +
+        "Write : " + p.write + "\n" +
+        "WriteWithoutResponse : " + p.writeWithoutResponse + "\n" +
+        "Notify : " + p.notify
+      );
 
       console.log('Appareil :', device.name);
       console.log('UART_RX :', uartCharacteristic.uuid);
