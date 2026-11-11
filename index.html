@@ -118,7 +118,7 @@ async function envoyer() {
   sending = true;
   try {
     const data = new TextEncoder().encode('ANGLE:' + angle + '\n');
-    if (uart.writeValueWithoutResponse) await uart.writeValueWithoutResponse(data);
+    if (uart.writeValueWithResponse) await uart.writeValueWithResponse(data);
     else await uart.writeValue(data);
     setStatus('Connecté — Angle : ' + angle + '°');
   } catch (e) {
