@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commande du gouvernail</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #f2f6fa;
+    color: #17324d;
+    padding: 20px;
+    text-align: center;
+}
+main {
+    max-width: 500px;
+    margin: auto;
+}
+.panel {
+    background: white;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 15px;
+}
+button {
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    background: #1769aa;
+    color: white;
+    font-size: 17px;
+    font-weight: bold;
+}
+#connectBtn {
+    width: 100%;
+    background: #16804a;
+}
+.row {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+.row button {
+    flex: 1;
+}
+input[type=range] {
+    width: 100%;
+    margin-top: 20px;
+}
+.value {
+    font-size: 24px;
+    font-weight: bold;
+    margin: 20px;
+}
+#status {
+    margin-top: 15px;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+<main>
+<h1>🚤 Gouvernail du bateau</h1>
+
+<section class="panel">
+    <h2>Bluetooth</h2>
+    <button id="connectBtn">Connecter la Micro:bit</button>
+    <div id="status">Non connecté</div>
+</section>
+
+<section class="panel">
+    <h2>Commande du gouvernail</h2>
+    <div class="value">
+        Angle : <span id="angleValue">90</span>°
+    </div>
+    <input id="angleSlider" type="range" min="0" max="180" value="90">
+    <div class="row">
+        <button id="leftBtn">−5°</button>
+        <button id="rightBtn">+5°</button>
+    </div>
+</section>
+</main>
+
+<script>
+const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const UART_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+let uart = null;
+let angle = 90;
+
+const status = document.getElementById('status');
+const slider = document.getElementById('angleSlider');
+const angleValue = document.getElementById('angleValue');
+
+document.getElementById('connectBtn').onclick = async () => {
+    try {
+        status.textContent = "Recherche de la Micro:bit...";
+
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [UART_SERVICE]
+        });
+
+        device.addEventListener('gattserverdisconnected', () => {
+            uart = null;
+            status.textContent = "Déconnecté";
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(UART_SERVICE);
+        uart = await service.getCharacteristic(UART_RX);
+
+        status.textContent = "Connecté à la Micro:bit";
+    } catch (error) {
+        status.textContent = "Erreur : " + error.message;
+        uart = null;
+    }
+};
+
+async function envoyerCommande() {
+    if (!uart) {
+        status.textContent = "Connecte d'abord la Micro:bit";
+        return;
+    }
+
+    try {
+        const data = new TextEncoder().encode("ANGLE:" + angle + "\n");
+
+        if (uart.properties.writeWithoutResponse &&
+            typeof uart.writeValueWithoutResponse === "function") {
+            await uart.writeValueWithoutResponse(data);
+        } else if (typeof uart.writeValueWithResponse === "function") {
+            await uart.writeValueWithResponse(data);
+        } else if (typeof uart.writeValue === "function") {
+            await uart.writeValue(data);
+        } else {
+            throw new Error("Aucune méthode d'écriture Bluetooth disponible");
+        }
+
+        status.textContent = "Connecté — Angle : " + angle + "°";
+    } catch (error) {
+        status.textContent = "Erreur d'envoi : " + error.message;
+        console.error(error);
+    }
+}
+
+function reglerAngle(valeur) {
+    angle = Math.max(0, Math.min(180, Number(valeur)));
+    slider.value = angle;
+    angleValue.textContent = angle;
+    envoyerCommande();
+}
+
+slider.addEventListener('input', () => {
+    angle = Number(slider.value);
+    angleValue.textContent = angle;
+});
+
+slider.addEventListener('change', () => reglerAngle(slider.value));
+
+document.getElementById('leftBtn').onclick = () => reglerAngle(angle - 5);
+document.getElementById('rightBtn').onclick = () => reglerAngle(angle + 5);
+</script>
+</body>
+</html>
