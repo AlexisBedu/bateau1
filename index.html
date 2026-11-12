@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gouvernail</title>
+<title>Bateau</title>
 <style>
 :root { --bg:#f2f6fa; --card:#fff; --text:#17324d; --blue:#1769aa; --green:#16804a; --red:#b3261e; }
 @media (prefers-color-scheme: dark) {
@@ -13,22 +13,25 @@
 body { font-family: -apple-system, Arial, sans-serif; background: var(--bg); color: var(--text);
        margin: 0; padding: 20px; padding-top: max(20px, env(safe-area-inset-top)); text-align: center; }
 main { max-width: 500px; margin: auto; }
-.panel { background: var(--card); padding: 20px; margin-top: 20px; border-radius: 15px; }
+h1 { margin: 0 0 5px; }
+h2 { margin: 0 0 5px; font-size: 20px; }
+.panel { background: var(--card); padding: 20px; margin-top: 16px; border-radius: 15px; }
 button { padding: 16px; border: none; border-radius: 12px; background: var(--blue); color: #fff;
          font-size: 18px; font-weight: bold; }
 button:active { opacity: .7; }
 #connectBtn { width: 100%; background: var(--green); }
 #connectBtn.on { background: var(--red); }
+#stopBtn { width: 100%; background: var(--red); margin-top: 15px; font-size: 22px; }
 .row { display: flex; gap: 10px; margin-top: 15px; }
 .row button { flex: 1; }
-input[type=range] { width: 100%; margin-top: 20px; height: 40px; }
+input[type=range] { width: 100%; margin-top: 15px; height: 40px; }
 .value { font-size: 28px; font-weight: bold; margin: 10px; }
 #status { margin-top: 15px; font-weight: bold; min-height: 1.4em; }
 </style>
 </head>
 <body>
 <main>
-  <h1>🚤 Gouvernail</h1>
+  <h1>🚤 Bateau</h1>
 
   <section class="panel">
     <button id="connectBtn">Connecter la Micro:bit</button>
@@ -36,7 +39,8 @@ input[type=range] { width: 100%; margin-top: 20px; height: 40px; }
   </section>
 
   <section class="panel">
-    <div class="value">Angle : <span id="angleValue">90</span>°</div>
+    <h2>Gouvernail</h2>
+    <div class="value"><span id="angleValue">90</span>°</div>
     <input id="angleSlider" type="range" min="0" max="180" value="90">
     <div class="row">
       <button id="leftBtn">−5°</button>
@@ -44,22 +48,35 @@ input[type=range] { width: 100%; margin-top: 20px; height: 40px; }
       <button id="rightBtn">+5°</button>
     </div>
   </section>
+
+  <section class="panel">
+    <h2>Moteur</h2>
+    <div class="value"><span id="speedValue">0</span> %</div>
+    <input id="speedSlider" type="range" min="-100" max="100" step="5" value="0">
+    <div class="row">
+      <button id="backBtn">Arrière</button>
+      <button id="fwdBtn">Avant</button>
+    </div>
+    <button id="stopBtn">⏹ STOP</button>
+  </section>
 </main>
 
 <script>
 // UART Bluetooth de la Micro:bit
 const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-const UART_RX      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // écriture vers la Micro:bit
 
 let device = null;
 let uart = null;
 let angle = 90;
+let vitesse = 0;
 let sending = false;
 let pending = false;
 
 const statusEl = document.getElementById('status');
 const slider = document.getElementById('angleSlider');
 const angleValue = document.getElementById('angleValue');
+const speedSlider = document.getElementById('speedSlider');
+const speedValue = document.getElementById('speedValue');
 const connectBtn = document.getElementById('connectBtn');
 
 function setStatus(t) { statusEl.textContent = t; }
@@ -68,8 +85,17 @@ function errText(e) {
   return [e && e.name, e && e.message].filter(Boolean).join(' : ') || String(e);
 }
 
+function afficher() {
+  slider.value = angle;
+  angleValue.textContent = angle;
+  speedSlider.value = vitesse;
+  speedValue.textContent = vitesse;
+}
+
 function onDisconnected() {
   uart = null;
+  vitesse = 0;
+  afficher();
   connectBtn.textContent = 'Connecter la Micro:bit';
   connectBtn.classList.remove('on');
   setStatus('Déconnecté');
@@ -95,10 +121,12 @@ async function connecter() {
     uart = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
     if (!uart) throw new Error('Caractéristique d\'écriture introuvable');
 
+    vitesse = 0; // sécurité : le moteur démarre toujours à l'arrêt
+    afficher();
     connectBtn.textContent = 'Déconnecter';
     connectBtn.classList.add('on');
     setStatus('Connecté à ' + (device.name || 'la Micro:bit'));
-    envoyer(); // synchronise la position
+    envoyer();
   } catch (e) {
     console.error(e);
     uart = null;
@@ -113,13 +141,13 @@ function deconnecter() {
 
 connectBtn.onclick = () => (uart ? deconnecter() : connecter());
 
-// Envoi avec limitation : un seul envoi à la fois, on garde le dernier angle
+// Un seul message pour tout : "CMD:angle,vitesse"
 async function envoyer() {
   if (!uart) return;
   if (sending) { pending = true; return; }
   sending = true;
   try {
-    const data = new TextEncoder().encode('ANGLE:' + angle + '\n');
+    const data = new TextEncoder().encode('CMD:' + angle + ',' + vitesse + '\n');
     const essais = [];
     if (uart.writeValueWithoutResponse) essais.push(['sans réponse', () => uart.writeValueWithoutResponse(data)]);
     if (uart.writeValueWithResponse)    essais.push(['avec réponse', () => uart.writeValueWithResponse(data)]);
@@ -127,19 +155,26 @@ async function envoyer() {
 
     let ok = false, derniere = '';
     for (const [nom, f] of essais) {
-      try { await f(); ok = true; setStatus('Envoyé (' + nom + ') — Angle : ' + angle + '°'); break; }
+      try { await f(); ok = true; break; }
       catch (e) { derniere = nom + ' → ' + errText(e); }
     }
-    if (!ok) setStatus('Échec : ' + derniere);
+    setStatus(ok ? 'Connecté — Angle : ' + angle + '° · Moteur : ' + vitesse + ' %'
+                 : 'Échec : ' + derniere);
   } finally {
     sending = false;
     if (pending) { pending = false; setTimeout(envoyer, 40); }
   }
 }
+
 function reglerAngle(v) {
   angle = Math.max(0, Math.min(180, Math.round(Number(v))));
-  slider.value = angle;
-  angleValue.textContent = angle;
+  afficher();
+  envoyer();
+}
+
+function reglerVitesse(v) {
+  vitesse = Math.max(-100, Math.min(100, Math.round(Number(v))));
+  afficher();
   envoyer();
 }
 
@@ -147,6 +182,11 @@ slider.addEventListener('input', () => reglerAngle(slider.value));
 document.getElementById('leftBtn').onclick   = () => reglerAngle(angle - 5);
 document.getElementById('rightBtn').onclick  = () => reglerAngle(angle + 5);
 document.getElementById('centerBtn').onclick = () => reglerAngle(90);
+
+speedSlider.addEventListener('input', () => reglerVitesse(speedSlider.value));
+document.getElementById('fwdBtn').onclick  = () => reglerVitesse(vitesse + 10);
+document.getElementById('backBtn').onclick = () => reglerVitesse(vitesse - 10);
+document.getElementById('stopBtn').onclick = () => reglerVitesse(0);
 
 if (!navigator.bluetooth) setStatus('Ouvre cette page dans Bluefy (Safari ne supporte pas Bluetooth)');
 </script>
